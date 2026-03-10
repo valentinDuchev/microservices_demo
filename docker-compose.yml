@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      # bash built-in TCP redirect — no nc required
+      test: ['CMD', 'bash', '-c', '>/dev/tcp/localhost/2181']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    healthcheck:
+      test: ['CMD', 'kafka-topics', '--bootstrap-server', 'localhost:9092', '--list']
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  nats:
+    # The official NATS image is built on scratch — no shell or wget available.
+    # Health checks are not possible. NATS starts in under a second so
+    # service_started in depends_on + restart: on-failure on dependents is sufficient.
+    image: nats:2.10
+    command: ['-p', '4222']
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tournaments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d tournaments']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    depends_on:
+      nats:
+        condition: service_started
+    environment:
+      NATS_URL: nats://nats:4222
+    restart: on-failure
+
+  tournament-service:
+    build:
+      context: ./tournament-service
+      dockerfile: Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      NATS_URL: nats://nats:4222
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tournaments
+    restart: on-failure
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    restart: on-failure
+
+volumes:
+  postgres_data:

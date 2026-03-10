@@ -1,0 +1,98 @@
+# Skill Tournaments - API Test Requests
+#
+# Open this file in VS Code with the "REST Client" extension installed
+# (humao.rest-client in the extensions marketplace).
+#
+# Each request is separated by "###". Click "Send Request" above any block
+# to execute it. Responses appear in a pane on the right.
+#
+# Start the TypeScript system first:  docker compose up --build  (gateway on :3000)
+# Start the JavaScript system first:  docker compose up --build  (gateway on :3001)
+#
+# Change @host below to switch between the two.
+
+@host = http://localhost:3000
+
+### 1. Join a tournament - Alice joins an FPS ranked tournament
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-1",
+  "gameType": "fps",
+  "tournamentType": "ranked",
+  "entryFee": 10
+}
+
+### 2. Join the same tournament - Bob joins the same one (finds existing open tournament)
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-2",
+  "gameType": "fps",
+  "tournamentType": "ranked",
+  "entryFee": 10
+}
+
+### 3. Duplicate join - Alice tries to join the same tournament again (expect 409)
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-1",
+  "gameType": "fps",
+  "tournamentType": "ranked",
+  "entryFee": 10
+}
+
+### 4. Unknown player - expect 404
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-999",
+  "gameType": "fps",
+  "tournamentType": "ranked",
+  "entryFee": 10
+}
+
+### 5. Validation error - missing required field (expect 400)
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-1",
+  "gameType": "fps"
+}
+
+### 6. Alice joins a second, different tournament
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-1",
+  "gameType": "rts",
+  "tournamentType": "casual",
+  "entryFee": 5
+}
+
+### 7. Charlie joins a third tournament type
+POST {{host}}/tournaments/join
+Content-Type: application/json
+
+{
+  "playerId": "player-3",
+  "gameType": "moba",
+  "tournamentType": "open",
+  "entryFee": 0
+}
+
+### 8. Get all tournaments for Alice (player-1) - should show fps/ranked and rts/casual
+GET {{host}}/tournaments/players/player-1
+
+### 9. Get all tournaments for Bob (player-2) - should show fps/ranked
+GET {{host}}/tournaments/players/player-2
+
+### 10. Get tournaments for a player with no entries
+GET {{host}}/tournaments/players/player-4
